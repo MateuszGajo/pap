@@ -12,8 +12,10 @@ static inline uint64_t read_tsc() {
 }
 */
 import "C"
-import "fmt"
-
+import (
+	"fmt"
+	"math"
+)
 
 func singleScalar(count int, input []int) int {
 	sum := 0
@@ -25,29 +27,70 @@ func singleScalar(count int, input []int) int {
 	return sum
 }
 
+func unroll2Scalar(count int, input []int) int {
+	sum := 0
+
+	for index := 0; index < count; index += 2 {
+		sum += input[index]
+		sum += input[index+1]
+	}
+
+	return sum
+}
+
+func unroll4Scalar(count int, input []int) int {
+	sum := 0
+
+	for index := 0; index < count; index += 4 {
+		sum += input[index]
+		sum += input[index+1]
+		sum += input[index+2]
+		sum += input[index+3]
+	}
+
+	return sum
+}
+
+func benchmark(name string, data []int, function func(count int, input []int) int, count int, testCount int, clockGHz float64) {
+
+	var res int
+	var start, end float64
+	var cycles = math.MaxFloat64
+
+	for i := 0; i < testCount; i++ {
+		start = float64(C.read_tsc())
+
+		res = function(count, data)
+		end = float64(C.read_tsc())
+		currentCycle := float64(end - start)
+		if currentCycle < cycles {
+			cycles = currentCycle
+		}
+	}
+
+	seconds := float64(cycles) / (clockGHz * 1e9)
+	cyclesPerAdd := float64(cycles) / float64(count)
+	addsPerCycle := float64(count) / float64(cycles)
+
+	fmt.Println("====== ", name, " ========")
+	fmt.Println("Sum: ", res)
+	fmt.Println("CPU Cycles Taken: ", cycles)
+	fmt.Println("Time (seconds): ", seconds)
+	fmt.Println("cycle/adds: ", cyclesPerAdd)
+	fmt.Println("adds/cycle: ", addsPerCycle)
+}
+
 func main() {
 	clockGHz := 4.2
-	var count int = 4096
+	count := 4096
+	testCount := 10000
 	data := make([]int, count)
 
 	for i := 1; i < count; i++ {
 		data[i] = i
 	}
 
-	start := C.read_tsc()
-	res := singleScalar(count, data)
-
-	end :=  C.read_tsc()
-	cycles := int64(end - start)
-	// cycles := int64(1)
-	seconds := float64(cycles) / (clockGHz * 1e9)
-	cyclesPerAdd := float64(cycles) / float64(count)
-	addsPerCycle := float64(count) / float64(cycles)
-
-	fmt.Println("Sum: " ,res)
-	fmt.Println("CPU Cycles Taken: " ,cycles)
-	fmt.Println("Time (seconds): " ,seconds)
-	fmt.Println("cycle/adds: " ,cyclesPerAdd)
-	fmt.Println("adds/cycle: " ,addsPerCycle)
-
+	benchmark("singleScalar", data, singleScalar, count, testCount, clockGHz)
+	benchmark("unroll2Scalar", data, unroll2Scalar, count, testCount, clockGHz)
+	benchmark("unroll4Scalar", data, unroll4Scalar, count, testCount, clockGHz)
 }

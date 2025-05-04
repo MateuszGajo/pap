@@ -1,5 +1,9 @@
 bytecode for js
 node --print-bytecode --print-bytecode-filter=[funcName] filename.ext
+
+node --allow-natives-syntax --print-opt-code --code-comments test.js
+
+
 node profiling:
 node --prof main.js ; node --prof-process isolate\*
 Example:
@@ -16,3 +20,5 @@ Example:
 Total can be more 100% if using multiple threads
 
 perf record -F 99 node main.js ; perf report
+
+
