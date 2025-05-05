@@ -51,6 +51,36 @@ func unroll4Scalar(count int, input []int) int {
 	return sum
 }
 
+func dualScalar(count int, input []int) int {
+	sumA := 0
+	sumB := 0
+
+	for index := 0; index < count; index += 2 {
+		sumA += input[index]
+		sumB += input[index+1]
+	}
+
+	sum := sumA + sumB
+	return sum
+}
+
+func quadScalar(count int, input []int) int {
+	sumA := 0
+	sumB := 0
+	sumC := 0
+	sumD := 0
+
+	for index := 0; index < count; index += 4 {
+		sumA += input[index]
+		sumB += input[index+1]
+		sumC += input[index+2]
+		sumD += input[index+3]
+	}
+
+	sum := sumA + sumB + sumC + sumD
+	return sum
+}
+
 func benchmark(name string, data []int, function func(count int, input []int) int, count int, testCount int, clockGHz float64) {
 
 	var res int
@@ -93,4 +123,6 @@ func main() {
 	benchmark("singleScalar", data, singleScalar, count, testCount, clockGHz)
 	benchmark("unroll2Scalar", data, unroll2Scalar, count, testCount, clockGHz)
 	benchmark("unroll4Scalar", data, unroll4Scalar, count, testCount, clockGHz)
+	benchmark("dualScalar", data, dualScalar, count, testCount, clockGHz)
+	benchmark("quadScalar", data, quadScalar, count, testCount, clockGHz)
 }

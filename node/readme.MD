@@ -1,6 +1,6 @@
 bytecode for js
 node --print-bytecode --print-bytecode-filter=[funcName] filename.ext
-
+assembly
 node --allow-natives-syntax --print-opt-code --code-comments test.js
 
 
