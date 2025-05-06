@@ -1,5 +1,7 @@
 import ctypes
 import os
+import numpy
+
 
 here = os.path.dirname(__file__)
 lib_path = os.path.join(here, "libtsc.so")
@@ -14,6 +16,26 @@ def single_scalar(count, input):
         sum += input[index]
         index += 1
     return sum
+
+
+def single_scalar_range(count, input):
+    sum = 0
+    for index in range(0, count):
+        sum += input[index]
+    return sum   
+
+def single_scalar_for_in(count, input):
+    sum = 0
+    for value in input:
+        sum += value
+    return sum  
+
+def numpySum(count, input):
+    return numpy.sum(input)
+
+def BuiltinSum(count, input):
+    return sum(input) 
+
 
 def unroll2_scalar(count, input):
     sum = 0
@@ -84,13 +106,19 @@ def benchmark(name, func, count, data, clock_ghz, test_count= 10000):
 def main():
     clock_ghz = 4.2
     count = 4096
-    data = list(range(1, count + 1))
+    # data = list(range(1, count + 1))
+    data: numpy.ndarray = numpy.arange(1, count + 1, dtype=numpy.uint32)
 
-    benchmark("SingleScalar", single_scalar, count, data, clock_ghz)
     benchmark("Unroll2Scalar", unroll2_scalar, count, data, clock_ghz)
     benchmark("Unroll4Scalar", unroll4_scalar, count, data, clock_ghz)
     benchmark("dualScalar", dual_scalar, count, data, clock_ghz)
     benchmark("quadScalar", quad_scalar, count, data, clock_ghz)
+    benchmark("SingleScalar", single_scalar, count, data, clock_ghz)
+    benchmark("SingleScalarRange", single_scalar_range, count, data, clock_ghz)
+    benchmark("SingleScalarForIn", single_scalar_for_in, count, data, clock_ghz)
+    benchmark("numpySum", numpySum, count, data, clock_ghz)
+    benchmark("BuiltinSum", BuiltinSum, count, data, clock_ghz)
+    # For more efficient loops use tools like cython, and construct raw c loops
 
 if __name__ == "__main__":
     main()

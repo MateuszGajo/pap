@@ -70,15 +70,30 @@ function benchmark(name, func, data, count, testCount) {
 
 }
 
+
+
 function main() {
   const count = 4096;
   const testCount = 10000;
-  const data = Array.from({ length: count }, (_, i) => i + 1);
-
+  let data = Array.from({ length: count }, (_, i) => i + 1);
+ 
   benchmark("singleScalar", singleScalar, data,count,testCount)
   benchmark("unroll2Scalar", unroll2Scalar, data,count,testCount)
   benchmark("unroll4Scalar", unroll4Scalar, data,count,testCount)
   benchmark("dualScalar", dualScalar, data,count,testCount)
+
+ data = new Uint32Array(count);
+
+  for (let i = 0; i < count; i++) {
+      data[i] = i + 1;
+  }
+  console.log("===== u32 array =====")
+  benchmark("singleScalar", singleScalar, data,count,testCount)
+  benchmark("unroll2Scalar", unroll2Scalar, data,count,testCount)
+  benchmark("unroll4Scalar", unroll4Scalar, data,count,testCount)
+  benchmark("dualScalar", dualScalar, data,count,testCount)
+// Degradation of performance using uint32
+// For further improvements lets use webassembly https://nodejs.org/en/learn/getting-started/nodejs-with-webassembly
 
 }
 
