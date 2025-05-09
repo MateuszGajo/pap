@@ -22,3 +22,5 @@ Total can be more 100% if using multiple threads
 perf record -F 99 node main.js ; perf report
 
 
+
+emcc factorial.cpp -o factorial.wasm -s WASM=1 -s EXPORTED_FUNCTIONS="['_factorial','_QuadScalarPtr','_QuadAVXPtr','_process_array']" -s EXPORTED_RUNTIME_METHODS="['cwrap']" -msimd128  -msse3 -mavx2
