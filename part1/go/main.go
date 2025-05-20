@@ -18,7 +18,7 @@ func buildValue(low, high byte) int {
 }
 
 func main() {
-	data, err := os.ReadFile("listing_0040_challenge_movs")
+	data, err := os.ReadFile("listing_0037_single_register_mov")
 
 	if err != nil {
 		log.Fatal(err)
@@ -29,6 +29,8 @@ func main() {
 
 	for len(data) > 0 {
 		firstByte := data[0]
+
+		fmt.Printf("%0b \n", data[0])
 		if len(data) > 0 {
 			data = data[1:]
 		}
@@ -109,6 +111,92 @@ func main() {
 			}
 
 			fmt.Printf("mov %v, %v \n", dst, src)
+		} else if firstByte>>1 == 0b01100011 {
+
+			secondByte := data[0]
+			if len(data) > 0 {
+				data = data[1:]
+			}
+
+			w := firstByte & 1
+			mod := (secondByte >> 6) & 0b11
+			rm := secondByte & 0b111
+
+			registers := registers_8
+			if w == 0b1 {
+				registers = registers_16
+			}
+
+			if w == 0b1 {
+				registers = registers_16
+			}
+
+			var res string
+
+			var dst string
+			if mod == 0b11 {
+				dst = registers[rm]
+				// src = registers[reg]
+
+			} else if mod == 0b00 {
+				dst = strings.Join(effectiveAddress[rm], "+")
+
+				// src = registers[reg]
+
+			} else if mod == 0b01 {
+				thirdByte := data[0]
+				if len(data) > 0 {
+					data = data[1:]
+				}
+				val := int8(thirdByte)
+				dst = strings.Join(effectiveAddress[rm], "+")
+
+				if val > 0 {
+					dst += fmt.Sprintf("+%d", val)
+				} else if val < 0 {
+					dst += fmt.Sprintf("%d", val)
+				}
+
+				// src = registers[reg]
+
+			} else if mod == 0b10 {
+				thirdByte := data[0]
+				fourthByte := data[1]
+				val := int16(binary.LittleEndian.Uint16(append([]byte{}, thirdByte, fourthByte)))
+				if len(data) > 0 {
+					data = data[2:]
+				}
+
+				dst = strings.Join(effectiveAddress[rm], "+")
+				if val > 0 {
+					dst += fmt.Sprintf("+%d", val)
+				} else if val < 0 {
+					dst += fmt.Sprintf("%d", val)
+				}
+
+				// src = registers[reg]
+
+			} else {
+				fmt.Printf("%0b \n", mod)
+				fmt.Printf("%0b \n", rm)
+				panic("not supported mod")
+			}
+
+			if w == 0b1 {
+
+				val := int16(binary.LittleEndian.Uint16(append([]byte{}, data[0], data[1])))
+				res = fmt.Sprintf("word %d", val)
+				if len(data) > 0 {
+					data = data[2:]
+				}
+			} else {
+				res = fmt.Sprintf("byte %d", int(int8(data[0])))
+				if len(data) > 0 {
+					data = data[1:]
+				}
+			}
+
+			fmt.Printf("mov %v, %v \n", dst, res)
 		} else if firstByte>>4 == 0b00001011 {
 
 			w := firstByte >> 3 & 1
