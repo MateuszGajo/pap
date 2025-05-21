@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
@@ -10,7 +11,7 @@ type instruction string
 type addressMode string
 
 const (
-	MOVE instruction = "MOVE"
+	MOVE instruction = "mov"
 )
 
 const (
@@ -21,34 +22,36 @@ const (
 	AccumulatorToMemory          addressMode = "AccumulatorToMemory"
 )
 
-func parseInstruction(data []byte) (instruction, addressMode) {
+func (cpu *Cpu) parseInstruction() (instruction, addressMode) {
 	var instruction instruction
 	var addressMode addressMode
-	if data[0]>>2 == 0b00100010 {
+
+	cpu.readNextByte()
+	if cpu.currentByte>>2 == 0b00100010 {
 		// register/memory to/from register
-		// d = data[0] >> 1 & 1
-		// w = data[0] & 1
+		// d = cpu.currentByte >> 1 & 1
+		// w = cpu.currentByte & 1
 		instruction = MOVE
 		addressMode = RegisterMemoryToFromRegister
-	} else if data[0]>>1 == 0b01100011 {
+	} else if cpu.currentByte>>1 == 0b01100011 {
 		// immediate to register/memory
-		// w = data[0] & 1
+		// w = cpu.currentByte & 1
 		instruction = MOVE
 		addressMode = ImmediateToRegisterMemory
-	} else if data[0]>>4 == 0b00001011 {
+	} else if cpu.currentByte>>4 == 0b00001011 {
 		// immediate to register
-		// w = data[0] >> 3 & 1
-		// reg = data[0] & 111
+		// w = cpu.currentByte >> 3 & 1
+		// reg = cpu.currentByte & 111
 		instruction = MOVE
 		addressMode = ImmediateToRegister
-	} else if data[0]>>1 == 0b01010000 {
+	} else if cpu.currentByte>>1 == 0b01010000 {
 		// memory to accumulator
-		// w = data[0] & 1
+		// w = cpu.currentByte & 1
 		instruction = MOVE
 		addressMode = MemoryToAccumulator
-	} else if data[0]>>1 == 0b01010001 {
+	} else if cpu.currentByte>>1 == 0b01010001 {
 		// accumulator to memory
-		// w = data[0] & 1
+		// w = instructionData & 1
 		instruction = MOVE
 		addressMode = AccumulatorToMemory
 	}
@@ -57,99 +60,212 @@ func parseInstruction(data []byte) (instruction, addressMode) {
 
 var registers_8 = []string{"AL", "CL", "DL", "BL", "AH", "CH", "DH", "BH"}
 var registers_16 = []string{"AX", "CX", "DX", "BX", "SP", "BP", "SI", "DI"}
+var memoryRegisters = []string{
+	"BX + SI",
+	"BX + DI",
+	"BP + SI",
+	"BP + DI",
+	"SI",
+	"DI",
+	"BP",
+	"BX",
+}
 
-func getRegisterOrMemory(mod, rm byte, w *byte) string {
+func (cpu *Cpu) getRegisterOrMemory() string {
 
-	if (mod == 0b11) != (w != nil) {
-
-		panic("w should be only defined for mod 11")
+	if cpu.mod == nil {
+		panic("mod is required in get registerOrMemory")
 	}
 
-	if mod > 0b111 || rm > 0b111 {
-		fmt.Println(rm > 0b111)
-		fmt.Println("mod: %v, rm: %v, w: %v", mod, rm, w)
-		panic("mod and rm should at most 111")
-	}
-
-	if mod == 0b00 {
+	if *cpu.mod == 0b00 {
 		// memory mode no displacement
-	} else if mod == 0b01 {
+		return memoryRegisters[*cpu.rm]
+	} else if *cpu.mod == 0b01 {
 		// memory mode, 8 bit displacement follows
-	} else if mod == 0b10 {
-		// memory mode, 16 bit displacement follows
-	} else if mod == 0b11 {
-		if *w > 0b1 {
-			panic("w should be only 0 or 1")
+		cpu.readNextByte()
+		val := int8(cpu.currentByte)
+		return fmt.Sprintf("%v + %v", memoryRegisters[*cpu.rm], val)
+	} else if *cpu.mod == 0b10 {
+		cpu.readNextByte()
+		firstByte := cpu.currentByte
+		cpu.readNextByte()
+		val := int16(binary.LittleEndian.Uint16(append([]byte{}, firstByte, cpu.currentByte)))
+		return fmt.Sprintf("%v + %v", memoryRegisters[*cpu.rm], val)
+	} else if *cpu.mod == 0b11 {
+		if cpu.w == nil {
+			panic("w is required for mod 11")
 		}
 		// register mode (no displacement)
-		if *w == 0 {
-			return registers_8[rm]
+		if *cpu.w == 0 {
+			return registers_8[*cpu.rm]
 		} else {
-			return registers_16[rm]
+			return registers_16[*cpu.rm]
 		}
 	}
-	fmt.Errorf("mod: %v, rm: %v, w: %v", mod, rm, w)
+	fmt.Errorf("mod: %v, rm: %v, w: %v", cpu.mod, cpu.rm, cpu.w)
 	panic("Should never happend")
 }
 
-func getRegister(reg, w byte) string {
-	if reg > 0b111 {
+func (cpu *Cpu) getRegister() string {
+	if cpu.reg == nil || cpu.w == nil {
+		panic("reg and w is required in get register")
+	}
+
+	if *cpu.reg > 0b111 {
 		panic("reg should be at most 111")
 	}
 
-	if w > 0b1 {
+	if *cpu.w > 0b1 {
 		panic("w should be only 0 or 1")
 	}
 
-	if w == 0 {
-		return registers_8[reg]
+	if *cpu.w == 0 {
+		return registers_8[*cpu.reg]
 	} else {
-		return registers_16[reg]
+		return registers_16[*cpu.reg]
 	}
-
 }
 
-func handleImmediateToRegister(instruction instruction, addressMode addressMode, data []byte) {
-	// w := data[0] >> 3
+func (cpu *Cpu) getImmediateData() string {
+	if cpu.w == nil {
+		panic("get immediate data requires w")
+	}
+
+	if *cpu.w == 0b1 {
+		firstByte := cpu.currentByte
+		cpu.readNextByte()
+		val := int16(binary.LittleEndian.Uint16(append([]byte{}, firstByte, cpu.currentByte)))
+		return fmt.Sprintf("%v", val)
+	} else {
+		val := int8(cpu.currentByte)
+		return fmt.Sprintf("%v", val)
+	}
 }
 
-func handleRegisterMemoryToFromRegister(instruction instruction, addressMode addressMode, data []byte) (string, string) {
-	d := data[0] >> 1 & 0b1
-	w := data[0] & 1
-	mod := data[1] >> 6 & 0b11
-	reg := data[1] >> 3 & 0b111
-	rm := data[1] & 0b111
+func (cpu *Cpu) handleImmediateToRegisterMemory(instruction instruction, addressMode addressMode) (string, string) {
+	// fmt.Println("immediate to register")
+	// fmt.Printf("%0b \n", cpu.currentByte)
 
-	dst := getRegisterOrMemory(mod, rm, &w)
-	src := getRegister(reg, w)
+	w := cpu.currentByte & 0b1
+	cpu.readNextByte()
+	mod := cpu.currentByte >> 6 & 0b11
+	rm := cpu.currentByte & 0b111
 
-	if d == 1 {
-		dst, src = src, dst
-	}
+	cpu.w = &w
+	cpu.mod = &mod
+	cpu.rm = &rm
+
+	dst := cpu.getRegisterOrMemory()
+	src := cpu.getImmediateData()
 
 	return dst, src
 }
 
-func exectuteInstruction(instruction instruction, addressMode addressMode, data []byte) (string, string) {
+func (cpu *Cpu) handleRegisterMemoryToFromRegister(instruction instruction, addressMode addressMode) (string, string) {
+	d := cpu.currentByte >> 1 & 0b1
+
+	w := cpu.currentByte & 0b1
+	cpu.readNextByte()
+	mod := cpu.currentByte >> 6 & 0b11
+	reg := cpu.currentByte >> 3 & 0b111
+	rm := cpu.currentByte & 0b111
+
+	cpu.d = &d
+	cpu.w = &w
+	cpu.mod = &mod
+	cpu.reg = &reg
+	cpu.rm = &rm
+
+	dst := cpu.getRegisterOrMemory()
+	src := cpu.getRegister()
+
+	return dst, src
+}
+
+func (cpu *Cpu) handleImmediateToRegister(instruction instruction, addressMode addressMode) (string, string) {
+	// fmt.Println("immediate to register")
+	// fmt.Printf("%0b \n", cpu.currentByte)
+
+	w := (cpu.currentByte >> 3) & 0b1
+	reg := cpu.currentByte & 0b111
+	cpu.readNextByte()
+
+	cpu.w = &w
+	cpu.reg = &reg
+
+	dst := cpu.getRegister()
+	src := cpu.getImmediateData()
+
+	return dst, src
+}
+
+func (cpu *Cpu) exectuteInstruction(instruction instruction, addressMode addressMode) (string, string) {
 	switch addressMode {
 	case ImmediateToRegister:
-		handleImmediateToRegister(instruction, addressMode, data)
+		// return cpu.handleImmediateToRegisterMemory(instruction, addressMode)
+		return cpu.handleImmediateToRegister(instruction, addressMode)
 	case RegisterMemoryToFromRegister:
-		return handleRegisterMemoryToFromRegister(instruction, addressMode, data)
+		return cpu.handleRegisterMemoryToFromRegister(instruction, addressMode)
+	default:
+		fmt.Printf("%0b %v %v \n", cpu.currentByte, instruction, addressMode)
+		panic("not handled instruction")
 	}
-	return "", ""
+
+	panic("not handled instruction")
+}
+
+type Cpu struct {
+	data        []byte
+	currentByte byte
+	rm          *byte
+	d           *byte
+	w           *byte
+	reg         *byte
+	mod         *byte
+}
+
+func (cpu *Cpu) readNextByte() {
+	if len(cpu.data) == 0 {
+		panic("Cant read data of empty arr")
+	}
+
+	res := cpu.data[0]
+	cpu.data = cpu.data[1:]
+	cpu.currentByte = res
+
+	// return res
+}
+func (cpu *Cpu) resetIdentifiers() {
+	cpu.reg = nil
+	cpu.rm = nil
+	cpu.w = nil
+	cpu.mod = nil
+	cpu.d = nil
+}
+
+func (cpu *Cpu) runInstructionSet() {
+	for len(cpu.data) > 0 {
+		cpu.resetIdentifiers()
+		instruction, addressMode := cpu.parseInstruction()
+		dst, src := cpu.exectuteInstruction(instruction, addressMode)
+		if cpu.d != nil && *cpu.d == 1 {
+			dst, src = src, dst
+		}
+
+		fmt.Printf("%v %v, %v \n", instruction, dst, src)
+	}
 }
 
 func main() {
-	data, err := os.ReadFile("./data/listing_0037_single_register_mov")
+	data, err := os.ReadFile("./data/listing_0039_more_movs")
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	instruction, addressMode := parseInstruction(data)
-
-	dst, src := exectuteInstruction(instruction, addressMode, data)
-
-	fmt.Printf("%v %v, %v \n", instruction, dst, src)
+	fmt.Println(data)
+	cpu := Cpu{
+		data: data,
+	}
+	cpu.runInstructionSet()
 
 }
