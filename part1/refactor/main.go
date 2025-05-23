@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"os"
 )
 
@@ -79,18 +80,32 @@ func (cpu *Cpu) getRegisterOrMemory() string {
 
 	if *cpu.mod == 0b00 {
 		// memory mode no displacement
-		return memoryRegisters[*cpu.rm]
+		if *cpu.rm == 0b110 {
+			// special case
+			cpu.readNextByte()
+			firstByte := cpu.currentByte
+			cpu.readNextByte()
+			val := int16(binary.LittleEndian.Uint16(append([]byte{}, firstByte, cpu.currentByte)))
+			return fmt.Sprintf("[%v]", val)
+		}
+		return fmt.Sprintf("[%v]", memoryRegisters[*cpu.rm])
 	} else if *cpu.mod == 0b01 {
 		// memory mode, 8 bit displacement follows
 		cpu.readNextByte()
 		val := int8(cpu.currentByte)
-		return fmt.Sprintf("%v + %v", memoryRegisters[*cpu.rm], val)
+		if val < 0 {
+			return fmt.Sprintf("[%v - %v]", memoryRegisters[*cpu.rm], math.Abs(float64(val)))
+		}
+		return fmt.Sprintf("[%v + %v]", memoryRegisters[*cpu.rm], val)
 	} else if *cpu.mod == 0b10 {
 		cpu.readNextByte()
 		firstByte := cpu.currentByte
 		cpu.readNextByte()
 		val := int16(binary.LittleEndian.Uint16(append([]byte{}, firstByte, cpu.currentByte)))
-		return fmt.Sprintf("%v + %v", memoryRegisters[*cpu.rm], val)
+		if val < 0 {
+			return fmt.Sprintf("[%v - %v]", memoryRegisters[*cpu.rm], math.Abs(float64(val)))
+		}
+		return fmt.Sprintf("[%v + %v]", memoryRegisters[*cpu.rm], val)
 	} else if *cpu.mod == 0b11 {
 		if cpu.w == nil {
 			panic("w is required for mod 11")
@@ -108,6 +123,7 @@ func (cpu *Cpu) getRegisterOrMemory() string {
 
 func (cpu *Cpu) getRegister() string {
 	if cpu.reg == nil || cpu.w == nil {
+		fmt.Println("reg", cpu.reg, "w", cpu.w)
 		panic("reg and w is required in get register")
 	}
 
@@ -132,19 +148,28 @@ func (cpu *Cpu) getImmediateData() string {
 	}
 
 	if *cpu.w == 0b1 {
+		cpu.readNextByte()
 		firstByte := cpu.currentByte
 		cpu.readNextByte()
 		val := int16(binary.LittleEndian.Uint16(append([]byte{}, firstByte, cpu.currentByte)))
 		return fmt.Sprintf("%v", val)
 	} else {
+		cpu.readNextByte()
 		val := int8(cpu.currentByte)
 		return fmt.Sprintf("%v", val)
 	}
 }
 
+func (cpu *Cpu) getAccumulatorData() string {
+
+	cpu.readNextByte()
+	firstByte := cpu.currentByte
+	cpu.readNextByte()
+	val := int16(binary.LittleEndian.Uint16(append([]byte{}, firstByte, cpu.currentByte)))
+	return fmt.Sprintf("[%v]", val)
+}
+
 func (cpu *Cpu) handleImmediateToRegisterMemory(instruction instruction, addressMode addressMode) (string, string) {
-	// fmt.Println("immediate to register")
-	// fmt.Printf("%0b \n", cpu.currentByte)
 
 	w := cpu.currentByte & 0b1
 	cpu.readNextByte()
@@ -157,6 +182,11 @@ func (cpu *Cpu) handleImmediateToRegisterMemory(instruction instruction, address
 
 	dst := cpu.getRegisterOrMemory()
 	src := cpu.getImmediateData()
+	if *cpu.w == 0b0 {
+		src = fmt.Sprintf("byte %v", src)
+	} else {
+		src = fmt.Sprintf("word %v", src)
+	}
 
 	return dst, src
 }
@@ -183,12 +213,8 @@ func (cpu *Cpu) handleRegisterMemoryToFromRegister(instruction instruction, addr
 }
 
 func (cpu *Cpu) handleImmediateToRegister(instruction instruction, addressMode addressMode) (string, string) {
-	// fmt.Println("immediate to register")
-	// fmt.Printf("%0b \n", cpu.currentByte)
-
 	w := (cpu.currentByte >> 3) & 0b1
 	reg := cpu.currentByte & 0b111
-	cpu.readNextByte()
 
 	cpu.w = &w
 	cpu.reg = &reg
@@ -199,11 +225,38 @@ func (cpu *Cpu) handleImmediateToRegister(instruction instruction, addressMode a
 	return dst, src
 }
 
+func (cpu *Cpu) handleMemoryToAccumulator(instruction instruction, addressMode addressMode) (string, string) {
+	w := cpu.currentByte & 0b1
+
+	cpu.w = &w
+
+	dst := "ax"
+	src := cpu.getAccumulatorData()
+
+	return dst, src
+}
+
+func (cpu *Cpu) handleAccumulatorToMemory(instruction instruction, addressMode addressMode) (string, string) {
+	w := cpu.currentByte & 0b1
+
+	cpu.w = &w
+
+	src := "ax"
+	dst := cpu.getAccumulatorData()
+
+	return dst, src
+}
+
 func (cpu *Cpu) exectuteInstruction(instruction instruction, addressMode addressMode) (string, string) {
 	switch addressMode {
+	case AccumulatorToMemory:
+		return cpu.handleAccumulatorToMemory(instruction, addressMode)
+	case MemoryToAccumulator:
+		return cpu.handleMemoryToAccumulator(instruction, addressMode)
 	case ImmediateToRegister:
-		// return cpu.handleImmediateToRegisterMemory(instruction, addressMode)
 		return cpu.handleImmediateToRegister(instruction, addressMode)
+	case ImmediateToRegisterMemory:
+		return cpu.handleImmediateToRegisterMemory(instruction, addressMode)
 	case RegisterMemoryToFromRegister:
 		return cpu.handleRegisterMemoryToFromRegister(instruction, addressMode)
 	default:
@@ -257,12 +310,12 @@ func (cpu *Cpu) runInstructionSet() {
 }
 
 func main() {
-	data, err := os.ReadFile("./data/listing_0039_more_movs")
+	data, err := os.ReadFile("./data/listing_0040_challenge_movs")
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(data)
+
 	cpu := Cpu{
 		data: data,
 	}
