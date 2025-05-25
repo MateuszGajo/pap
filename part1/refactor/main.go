@@ -12,10 +12,31 @@ type instruction string
 type addressMode string
 
 const (
-	MOVE instruction = "mov"
-	ADD  instruction = "add"
-	SUB  instruction = "sub"
-	CMP  instruction = "cmp"
+	MOVE   instruction = "mov"
+	ADD    instruction = "add"
+	SUB    instruction = "sub"
+	CMP    instruction = "cmp"
+	JNZ    instruction = "jnz"
+	JE     instruction = "je"
+	JL     instruction = "jl"
+	JLE    instruction = "jle"
+	JB     instruction = "jb"
+	JBE    instruction = "jbe"
+	JP     instruction = "jp"
+	JO     instruction = "jo"
+	JS     instruction = "js"
+	JNE    instruction = "jne"
+	JNL    instruction = "jnl"
+	JG     instruction = "jg"
+	JNB    instruction = "jnb"
+	JA     instruction = "ja"
+	JNP    instruction = "jnp"
+	JNO    instruction = "jno"
+	JNS    instruction = "jns"
+	LOOP   instruction = "loop"
+	LOOPZ  instruction = "loopz"
+	LOOPNZ instruction = "loopnz"
+	JCXZ   instruction = "jcxz"
 )
 
 const (
@@ -27,6 +48,7 @@ const (
 	RegisterMemoryWithRegisterToEither          addressMode = "RegisterMemoryWithRegisterToEither"
 	ImmediateToRegisterMemoryWithSignExtenstion addressMode = "ImmediateToRegisterMemoryWithSignExtenstion"
 	ImmediateToAccumulator                      addressMode = "ImmediateToAccumulator"
+	SignedIncrementToInstructionPointer         addressMode = "SignedIncrementToInstructionPointer"
 )
 
 func (cpu *Cpu) parseInstruction() (instruction, addressMode) {
@@ -76,6 +98,66 @@ func (cpu *Cpu) parseInstruction() (instruction, addressMode) {
 	} else if cpu.currentByte>>1 == 0b00011110 {
 		instruction = CMP
 		addressMode = ImmediateToAccumulator
+	} else if cpu.currentByte == 0b01110101 {
+		instruction = JNZ
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110100 {
+		instruction = JE
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111100 {
+		instruction = JL
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111110 {
+		instruction = JLE
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110010 {
+		instruction = JB
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110110 {
+		instruction = JBE
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111010 {
+		instruction = JP
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110000 {
+		instruction = JO
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111000 {
+		instruction = JS
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111101 {
+		instruction = JNL
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111111 {
+		instruction = JG
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110011 {
+		instruction = JNB
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110111 {
+		instruction = JA
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111011 {
+		instruction = JNP
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01110001 {
+		instruction = JNO
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b01111001 {
+		instruction = JNS
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b011100010 {
+		instruction = LOOP
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b011100001 {
+		instruction = LOOPZ
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b011100000 {
+		instruction = LOOPNZ
+		addressMode = SignedIncrementToInstructionPointer
+	} else if cpu.currentByte == 0b011100011 {
+		instruction = JCXZ
+		addressMode = SignedIncrementToInstructionPointer
 	}
 
 	return instruction, addressMode
@@ -202,6 +284,11 @@ func (cpu *Cpu) getAccumulatorData() string {
 	cpu.readNextByte()
 	val := int16(binary.LittleEndian.Uint16(append([]byte{}, cpu.previousByte, cpu.currentByte)))
 	return fmt.Sprintf("[%v]", val)
+}
+
+func (cpu *Cpu) handleSignedIncrementToInstructionPointer(instruction instruction, addressMode addressMode) (string, string) {
+	cpu.readNextByte()
+	return fmt.Sprintf("%v", cpu.currentByte), ""
 }
 
 func (cpu *Cpu) handleImmediateToRegisterMemory(instruction instruction, addressMode addressMode) (string, string) {
@@ -357,6 +444,8 @@ func (cpu *Cpu) exectuteInstruction(instruction instruction, addressMode address
 	switch addressMode {
 	case AccumulatorToMemory:
 		return cpu.handleAccumulatorToMemory(instruction, addressMode)
+	case SignedIncrementToInstructionPointer:
+		return cpu.handleSignedIncrementToInstructionPointer(instruction, addressMode)
 	case MemoryToAccumulator:
 		return cpu.handleMemoryToAccumulator(instruction, addressMode)
 	case ImmediateToRegister:
@@ -425,8 +514,12 @@ func (cpu *Cpu) runInstructionSet() {
 		if cpu.d != nil && *cpu.d == 1 {
 			dst, src = src, dst
 		}
+		if src == "" {
+			fmt.Printf("%v %v\n", instruction, dst)
+		} else {
+			fmt.Printf("%v %v, %v \n", instruction, dst, src)
+		}
 
-		fmt.Printf("%v %v, %v \n", instruction, dst, src)
 	}
 }
 
