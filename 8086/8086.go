@@ -465,7 +465,6 @@ func (cpu *Cpu) exectuteInstruction(instruction instruction, addressMode address
 		panic("not handled instruction")
 	}
 
-	panic("not handled instruction")
 }
 
 type Cpu struct {
