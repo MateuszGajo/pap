@@ -1,5 +1,7 @@
 package main
 
 func main() {
-	harverstineWork()
+	// harverstineWork()
+	// seedData()
+	parseJson()
 }
