@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"strconv"
+	"time"
 	"unicode"
 )
 
@@ -24,8 +26,17 @@ func (parser *Parser) getByte() byte {
 	return parser.data[parser.pos]
 }
 
-func parseJson() {
+func parseJson() (interface{}, int) {
+	start := time.Now()
+
 	file, err := os.ReadFile("./output.json")
+
+	fileLoadTimeSec = time.Since(start).Seconds()
+	fileSizeMb := float64(len(file) / (1024 * 1024))
+	fmt.Println("file load time", fileLoadTimeSec)
+	fmt.Println("file size: ", fileSizeMb)
+	fmt.Printf("read file  %v mb/s \n", fileSizeMb/fileLoadTimeSec)
+	fmt.Printf("read file  %v GB/s \n", fileSizeMb/(fileLoadTimeSec*1024))
 
 	if err != nil {
 		log.Fatal(err)
@@ -36,7 +47,6 @@ func parseJson() {
 	}
 	var output interface{}
 	if parser.getByte() == '[' {
-		fmt.Println("arr")
 		output, err = parser.parseArray()
 	} else if parser.getByte() == '{' {
 		output, err = parser.parseObject()
@@ -44,7 +54,103 @@ func parseJson() {
 		panic("not supported char")
 	}
 
-	fmt.Println("output", output)
+	var data DataStruct
+
+	if err := assign(output, &data); err != nil {
+		panic(err)
+	}
+
+	return output, len(file)
+}
+
+func assign(data any, out any) error {
+	val := reflect.ValueOf(out)
+	if val.Kind() != reflect.Ptr || val.IsNil() {
+		return errors.New("output must be a non-nil pointer")
+	}
+
+	return assignValue(data, val.Elem())
+}
+
+func assignValue(data any, target reflect.Value) error {
+	if !target.CanSet() {
+		return errors.New("target is not settable")
+	}
+
+	switch target.Kind() {
+	case reflect.Struct:
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("expected map[string]interface{} for struct, got %T", data)
+		}
+
+		for i := 0; i < target.NumField(); i++ {
+			field := target.Type().Field(i)
+
+			// Skip unexported fields
+			if !target.Field(i).CanSet() {
+				continue
+			}
+
+			jsonKey := field.Tag.Get("json")
+			if jsonKey == "" {
+				jsonKey = field.Name
+			}
+
+			val, found := m[jsonKey]
+			if !found {
+				return fmt.Errorf("missing field '%s' in input", jsonKey)
+			}
+
+			if err := assignValue(val, target.Field(i)); err != nil {
+				return fmt.Errorf("error assigning field '%s': %w", jsonKey, err)
+			}
+		}
+
+		return nil
+
+	case reflect.Slice:
+		arr, ok := data.([]interface{})
+		if !ok {
+			return errors.New("expected array for slice assignment")
+		}
+
+		slice := reflect.MakeSlice(target.Type(), len(arr), len(arr))
+		for i, v := range arr {
+			if err := assignValue(v, slice.Index(i)); err != nil {
+				return err
+			}
+		}
+		target.Set(slice)
+		return nil
+
+	case reflect.Float64:
+		f, ok := data.(float64)
+		if !ok {
+			return errors.New("expected float64")
+		}
+		target.SetFloat(f)
+		return nil
+
+	case reflect.String:
+		s, ok := data.(string)
+		if !ok {
+			return errors.New("expected string")
+		}
+		target.SetString(s)
+		return nil
+
+	case reflect.Bool:
+		b, ok := data.(bool)
+		if !ok {
+			return errors.New("expected bool")
+		}
+		target.SetBool(b)
+		return nil
+
+	default:
+		return errors.New("unsupported type: " + target.Kind().String())
+	}
 }
 
 func (parser *Parser) parseArray() ([]interface{}, error) {
@@ -54,7 +160,8 @@ func (parser *Parser) parseArray() ([]interface{}, error) {
 	parser.nextByte()
 	parser.skipWhitespace()
 
-	arr := []interface{}{}
+	arr := make([]interface{}, 5_000_000)
+	index := 0
 
 	for {
 		parser.skipWhitespace()
@@ -67,9 +174,8 @@ func (parser *Parser) parseArray() ([]interface{}, error) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("val")
-		fmt.Println(val)
-		arr = append(arr, val)
+		arr[index] = val
+		index++
 
 		parser.skipWhitespace()
 
@@ -77,7 +183,6 @@ func (parser *Parser) parseArray() ([]interface{}, error) {
 			parser.nextByte()
 			parser.skipWhitespace()
 		} else if parser.getByte() != ']' {
-			fmt.Println(string(parser.getByte()))
 			panic("expected data  to be ]")
 		}
 	}
@@ -94,7 +199,6 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 	for {
 		parser.skipWhitespace()
 		if parser.getByte() == '}' {
-			fmt.Println("end?")
 			parser.nextByte()
 			break
 		}
@@ -111,7 +215,6 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 
 		parser.skipWhitespace()
 		val, err := parser.parseValue()
-		fmt.Println("parsed value number", val)
 		if err != nil {
 			panic(err)
 		}
@@ -122,7 +225,6 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 			parser.nextByte()
 			parser.skipWhitespace()
 		} else if parser.getByte() != '}' {
-			fmt.Println(string(parser.getByte()))
 			panic("expected data  to be }")
 		}
 	}
@@ -174,7 +276,6 @@ func (parser *Parser) parseValue() (interface{}, error) {
 	case ch == '-' || (ch >= '0' && ch <= '9'):
 		return parser.parseNumber()
 	default:
-		fmt.Println(string(parser.getByte()))
 		panic("not supported")
 	}
 }
@@ -187,7 +288,6 @@ func (parser *Parser) skipWhitespace() {
 
 func (parser *Parser) parseString() (string, error) {
 	if parser.getByte() != '"' {
-		fmt.Println(string(parser.getByte()))
 		return "", fmt.Errorf("Expected key to start with \"")
 	}
 	parser.nextByte()

@@ -1,7 +1,9 @@
 package main
 
 func main() {
-	// harverstineWork()
+	harverstineWork()
+	// harverstineWorkBuiltIn()
+	// harverstineWorkFastJson()
 	// seedData()
-	parseJson()
+	// parseJson()
 }
