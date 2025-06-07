@@ -26,17 +26,12 @@ func (parser *Parser) getByte() byte {
 	return parser.data[parser.pos]
 }
 
-func parseJson() (interface{}, int) {
+func parseJson() (interface{}, int, float64) {
 	start := time.Now()
 
 	file, err := os.ReadFile("./output.json")
 
 	fileLoadTimeSec = time.Since(start).Seconds()
-	fileSizeMb := float64(len(file) / (1024 * 1024))
-	fmt.Println("file load time", fileLoadTimeSec)
-	fmt.Println("file size: ", fileSizeMb)
-	fmt.Printf("read file  %v mb/s \n", fileSizeMb/fileLoadTimeSec)
-	fmt.Printf("read file  %v GB/s \n", fileSizeMb/(fileLoadTimeSec*1024))
 
 	if err != nil {
 		log.Fatal(err)
@@ -60,7 +55,7 @@ func parseJson() (interface{}, int) {
 		panic(err)
 	}
 
-	return output, len(file)
+	return output, len(file), fileLoadTimeSec
 }
 
 func assign(data any, out any) error {

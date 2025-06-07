@@ -1,7 +1,7 @@
 package main
 
 func main() {
-	harverstineWork()
+	haverstineWorkRepetitionTest(5)
 	// harverstineWorkBuiltIn()
 	// harverstineWorkFastJson()
 	// seedData()
