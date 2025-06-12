@@ -19,7 +19,7 @@ type HarversineData struct {
 }
 
 func seedData() {
-	dataCount := 5_000_000
+	dataCount := 50_000_000
 
 	haversineData := make([]HarversineData, dataCount)
 

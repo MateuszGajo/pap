@@ -170,7 +170,7 @@ func haverstineWorkRepetitionTest(repCount int) {
 			}
 
 			if minParseFileLoadTime > parseFileLoadTime {
-				minFileLoadTimeSec = parseFileLoadTime
+				minParseFileLoadTime = parseFileLoadTime
 			} else if maxParseFileLoadTime < parseFileLoadTime {
 				maxParseFileLoadTime = parseFileLoadTime
 			}
