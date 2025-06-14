@@ -169,6 +169,7 @@ func (parser *Parser) parseArray() ([]interface{}, error) {
 		if err != nil {
 			panic(err)
 		}
+		// a lot of allocations, maybe do it once in a while at the end?
 		arr[index] = val
 		index++
 
@@ -190,6 +191,7 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 	if parser.getByte() != '{' {
 		panic("expected to start with {")
 	}
+	//maybe sliding windows instead of parsing byte by byte
 	parser.nextByte()
 	for {
 		parser.skipWhitespace()
@@ -206,9 +208,11 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 		if parser.getByte() != ':' {
 			panic("invalid struct, after key expected to be :")
 		}
+		//maybe one method skipp white spaces, get next byte?
 		parser.nextByte()
 
 		parser.skipWhitespace()
+		//inlining maybe?
 		val, err := parser.parseValue()
 		if err != nil {
 			panic(err)
@@ -228,6 +232,7 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 
 func (parser *Parser) parseNumber() (interface{}, error) {
 	start := parser.pos
+	// fmt.Println("start", start)
 	if parser.getByte() == '-' {
 		parser.nextByte()
 	}
@@ -253,6 +258,10 @@ func (parser *Parser) parseNumber() (interface{}, error) {
 	}
 
 	numStr := parser.data[start:parser.pos]
+	// fmt.Println("end", parser.pos)
+
+	// diff := parser.pos - start
+
 	num, err := strconv.ParseFloat(string(numStr), 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid number: %v", err)
@@ -260,7 +269,9 @@ func (parser *Parser) parseNumber() (interface{}, error) {
 	return num, nil
 }
 
+// [{"x0":-68.10232982601129,"
 func (parser *Parser) parseValue() (interface{}, error) {
+	// is if else faster?
 	switch ch := parser.getByte(); {
 	case ch == '{':
 		return parser.parseObject()
@@ -270,6 +281,16 @@ func (parser *Parser) parseValue() (interface{}, error) {
 		return parser.parseString()
 	case ch == '-' || (ch >= '0' && ch <= '9'):
 		return parser.parseNumber()
+		parser.pos += 18
+		return float64(1), nil
+		// if ch == '-' {
+		// 	parser.pos += 18
+		// 	return 1, nil
+		// } else {
+		// 	parser.pos += 17
+		// 	return 1, nil
+		// }
+		// return float64(1), nil
 	default:
 		panic("not supported")
 	}
@@ -281,20 +302,53 @@ func (parser *Parser) skipWhitespace() {
 	}
 }
 
+// MIN read file + parse json 0.15691109392334032 GB/s
+// MAX read file + parse json 0.17485823790612579 GB/s
+// MIN read file + parse json 0.15692400201624676 GB/s
+// MAX read file + parse json 0.16851933632367355 GB/s
+// 0.135 to 0.165 ~= 20 procent improvemnt
 func (parser *Parser) parseString() (string, error) {
 	if parser.getByte() != '"' {
 		return "", fmt.Errorf("Expected key to start with \"")
 	}
 	parser.nextByte()
-	key := ""
+	start := parser.pos
 	for {
 		if parser.getByte() == '"' {
+			key := string(parser.data[start:parser.pos])
 			parser.nextByte()
-			break
+
+			return key, nil
 		}
-		key += string(parser.getByte())
 		parser.nextByte()
 	}
 
-	return key, nil
+	panic("should never enter here")
 }
+
+// MIN read file + parse json 0.1614567085436527 GB/s
+// // MAX read file + parse json 0.17501436692773215 GB/s
+// MIN read file + parse json 0.15691932469560368 GB/s
+// MAX read file + parse json 0.17501493284551098 GB/s
+
+// func (parser *Parser) parseString() (string, error) {
+// 	index := parser.pos
+// 	if parser.data[index] != '"' {
+// 		return "", fmt.Errorf("Expected key to start with \"")
+// 	}
+// 	index++
+// 	start := index
+// 	for {
+// 		if parser.data[index] == '"' {
+// 			key := string(parser.data[start:index])
+// 			index++
+
+// 			parser.pos = index
+
+// 			return key, nil
+// 		}
+// 		index++
+// 	}
+
+// 	panic("should never enter here")
+// }
