@@ -6,9 +6,8 @@ import (
 	"log"
 	"os"
 	"reflect"
-	"strconv"
 	"time"
-	"unicode"
+	"unsafe"
 )
 
 type Parser struct {
@@ -230,6 +229,39 @@ func (parser *Parser) parseObject() (map[string]interface{}, error) {
 	return obj, nil
 }
 
+func isDigit(ch byte) bool {
+	return ch >= '0' && ch <= '9'
+}
+
+func fastParseFloat(b []byte) (float64, error) {
+	var i int
+	var neg bool
+	if b[0] == '-' {
+		neg = true
+		i++
+	}
+	var intPart int64
+	for i < len(b) && isDigit(b[i]) {
+		intPart = intPart*10 + int64(b[i]-'0')
+		i++
+	}
+	var fracPart float64
+	if i < len(b) && b[i] == '.' {
+		i++
+		divisor := 10.0
+		for i < len(b) && isDigit(b[i]) {
+			fracPart += float64(b[i]-'0') / divisor
+			divisor *= 10
+			i++
+		}
+	}
+	f := float64(intPart) + fracPart
+	if neg {
+		f = -f
+	}
+	return f, nil
+}
+
 func (parser *Parser) parseNumber() (interface{}, error) {
 	start := parser.pos
 	// fmt.Println("start", start)
@@ -238,7 +270,7 @@ func (parser *Parser) parseNumber() (interface{}, error) {
 	}
 	digitsFound := false
 
-	for (len(parser.data) > parser.pos) && unicode.IsDigit(rune(parser.getByte())) {
+	for (len(parser.data) > parser.pos) && isDigit(parser.getByte()) {
 		parser.nextByte()
 		digitsFound = true
 	}
@@ -249,20 +281,19 @@ func (parser *Parser) parseNumber() (interface{}, error) {
 
 	if parser.getByte() == '.' {
 		parser.nextByte()
-		if !unicode.IsDigit(rune(parser.getByte())) {
+		if !isDigit(parser.getByte()) {
 			return nil, errors.New("invalid float format")
 		}
-		for (len(parser.data) > parser.pos) && unicode.IsDigit(rune(parser.getByte())) {
+		for (len(parser.data) > parser.pos) && isDigit(parser.getByte()) {
 			parser.nextByte()
 		}
 	}
 
-	numStr := parser.data[start:parser.pos]
 	// fmt.Println("end", parser.pos)
 
 	// diff := parser.pos - start
 
-	num, err := strconv.ParseFloat(string(numStr), 64)
+	num, err := fastParseFloat(parser.data[start:parser.pos])
 	if err != nil {
 		return nil, fmt.Errorf("invalid number: %v", err)
 	}
@@ -281,32 +312,18 @@ func (parser *Parser) parseValue() (interface{}, error) {
 		return parser.parseString()
 	case ch == '-' || (ch >= '0' && ch <= '9'):
 		return parser.parseNumber()
-		parser.pos += 18
-		return float64(1), nil
-		// if ch == '-' {
-		// 	parser.pos += 18
-		// 	return 1, nil
-		// } else {
-		// 	parser.pos += 17
-		// 	return 1, nil
-		// }
-		// return float64(1), nil
 	default:
 		panic("not supported")
 	}
 }
 
-func (parser *Parser) skipWhitespace() {
-	for len(parser.data) > parser.pos && unicode.IsSpace(rune(parser.data[parser.pos])) {
-		parser.pos++
+// inlining
+func (p *Parser) skipWhitespace() {
+	for p.pos < len(p.data) && (p.data[p.pos] == ' ' || p.data[p.pos] == '\n' || p.data[p.pos] == '\r' || p.data[p.pos] == '\t') {
+		p.pos++
 	}
 }
 
-// MIN read file + parse json 0.15691109392334032 GB/s
-// MAX read file + parse json 0.17485823790612579 GB/s
-// MIN read file + parse json 0.15692400201624676 GB/s
-// MAX read file + parse json 0.16851933632367355 GB/s
-// 0.135 to 0.165 ~= 20 procent improvemnt
 func (parser *Parser) parseString() (string, error) {
 	if parser.getByte() != '"' {
 		return "", fmt.Errorf("Expected key to start with \"")
@@ -315,7 +332,7 @@ func (parser *Parser) parseString() (string, error) {
 	start := parser.pos
 	for {
 		if parser.getByte() == '"' {
-			key := string(parser.data[start:parser.pos])
+			key := unsafeBytesToString(parser.data[start:parser.pos])
 			parser.nextByte()
 
 			return key, nil
@@ -326,29 +343,6 @@ func (parser *Parser) parseString() (string, error) {
 	panic("should never enter here")
 }
 
-// MIN read file + parse json 0.1614567085436527 GB/s
-// // MAX read file + parse json 0.17501436692773215 GB/s
-// MIN read file + parse json 0.15691932469560368 GB/s
-// MAX read file + parse json 0.17501493284551098 GB/s
-
-// func (parser *Parser) parseString() (string, error) {
-// 	index := parser.pos
-// 	if parser.data[index] != '"' {
-// 		return "", fmt.Errorf("Expected key to start with \"")
-// 	}
-// 	index++
-// 	start := index
-// 	for {
-// 		if parser.data[index] == '"' {
-// 			key := string(parser.data[start:index])
-// 			index++
-
-// 			parser.pos = index
-
-// 			return key, nil
-// 		}
-// 		index++
-// 	}
-
-// 	panic("should never enter here")
-// }
+func unsafeBytesToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
